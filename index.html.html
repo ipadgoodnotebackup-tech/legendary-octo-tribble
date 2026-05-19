@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>시군구별 1인가구 청년·노년 비율 버블 지도 (2024)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background: #0f172a; color: #e2e8f0; }
+
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-bottom: 1px solid #334155;
+    padding: 12px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  #header h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }
+  #header p { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+  #map { position: fixed; top: 65px; left: 0; right: 0; bottom: 0; }
+
+  /* Legend */
+  #legend {
+    position: fixed; bottom: 24px; left: 16px; z-index: 1000;
+    background: rgba(15,23,42,0.92); backdrop-filter: blur(12px);
+    border: 1px solid #334155; border-radius: 12px;
+    padding: 16px 18px; width: 220px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #legend h3 { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; }
+
+  .legend-section { margin-bottom: 14px; }
+  .legend-section h4 { font-size: 11px; color: #64748b; margin-bottom: 8px; }
+
+  .color-bar {
+    height: 10px; border-radius: 5px;
+    background: linear-gradient(to right, #7c3aed, #8b5cf6, #a78bfa, #c4b5fd, #e2e8f0, #fde68a, #fbbf24, #f97316, #dc2626);
+    margin-bottom: 4px;
+  }
+  .color-labels {
+    display: flex; justify-content: space-between;
+    font-size: 10px; color: #94a3b8;
+  }
+  .color-labels span:nth-child(2) { color: #64748b; }
+
+  .size-examples { display: flex; align-items: flex-end; gap: 12px; padding: 4px 0; }
+  .size-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .size-circle { border-radius: 50%; background: rgba(148,163,184,0.3); border: 1.5px solid rgba(148,163,184,0.5); }
+  .size-label { font-size: 9px; color: #64748b; white-space: nowrap; }
+
+  .legend-note { font-size: 10px; color: #475569; margin-top: 10px; line-height: 1.5; border-top: 1px solid #1e293b; padding-top: 10px; }
+
+  /* Stats panel */
+  #stats {
+    position: fixed; bottom: 24px; right: 16px; z-index: 1000;
+    background: rgba(15,23,42,0.92); backdrop-filter: blur(12px);
+    border: 1px solid #334155; border-radius: 12px;
+    padding: 14px 16px; width: 200px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #stats h3 { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .stat-label { font-size: 11px; color: #64748b; }
+  .stat-value { font-size: 12px; font-weight: 600; color: #e2e8f0; }
+  .stat-top { font-size: 10px; color: #94a3b8; margin-top: 8px; border-top: 1px solid #1e293b; padding-top: 8px; }
+  .stat-top span { display: block; margin-bottom: 3px; }
+  .highlight-young { color: #f97316; font-weight: 600; }
+  .highlight-old { color: #8b5cf6; font-weight: 600; }
+
+  /* Filter buttons */
+  #filters {
+    position: fixed; top: 75px; right: 16px; z-index: 1000;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .filter-btn {
+    background: rgba(15,23,42,0.85); backdrop-filter: blur(8px);
+    border: 1px solid #334155; border-radius: 8px;
+    padding: 7px 12px; font-size: 11px; color: #94a3b8;
+    cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  }
+  .filter-btn:hover { background: rgba(30,41,59,0.95); color: #e2e8f0; }
+  .filter-btn.active { border-color: #f97316; color: #f97316; background: rgba(249,115,22,0.1); }
+  .filter-btn.active-old { border-color: #8b5cf6; color: #8b5cf6; background: rgba(139,92,246,0.1); }
+
+  /* Popup custom style */
+  .leaflet-popup-content-wrapper {
+    background: rgba(15,23,42,0.96) !important;
+    border: 1px solid #334155 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+    color: #e2e8f0 !important;
+  }
+  .leaflet-popup-tip { background: rgba(15,23,42,0.96) !important; }
+  .leaflet-popup-content { margin: 14px 16px !important; }
+  .popup-title { font-size: 15px; font-weight: 700; color: #f1f5f9; margin-bottom: 10px; border-bottom: 1px solid #1e293b; padding-bottom: 8px; }
+  .popup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .popup-card {
+    background: rgba(30,41,59,0.8); border-radius: 8px; padding: 8px;
+    border: 1px solid #1e293b; text-align: center;
+  }
+  .popup-card-label { font-size: 10px; color: #64748b; margin-bottom: 4px; }
+  .popup-card-value { font-size: 18px; font-weight: 700; }
+  .popup-card-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+  .young-color { color: #f97316; }
+  .old-color { color: #8b5cf6; }
+  .popup-total { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 6px; }
+  .popup-diff {
+    text-align: center; font-size: 12px; font-weight: 600;
+    margin-top: 8px; padding: 5px; border-radius: 6px;
+  }
+  .popup-bar-wrap { margin-top: 10px; }
+  .popup-bar-label { display: flex; justify-content: space-between; font-size: 10px; color: #64748b; margin-bottom: 4px; }
+  .popup-bar-bg { height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; display: flex; }
+  .popup-bar-young { height: 100%; background: #f97316; transition: width 0.3s; }
+  .popup-bar-old { height: 100%; background: #8b5cf6; transition: width 0.3s; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <h1>🏠 시군구별 1인가구 청년·노년 비율 버블 지도</h1>
+    <p>출처: 통계청 2024년 | 청년: 20~39세 &nbsp;·&nbsp; 노년: 65세 이상 | 원 크기 = 1인가구 총수</p>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<div id="filters">
+  <button class="filter-btn active" id="btn-all" onclick="setFilter('all')">📍 전체 보기</button>
+  <button class="filter-btn" id="btn-young" onclick="setFilter('young')">🔶 청년 우세 지역</button>
+  <button class="filter-btn" id="btn-old" onclick="setFilter('old')">🔷 노년 우세 지역</button>
+</div>
+
+<div id="legend">
+  <h3>범 례</h3>
+  <div class="legend-section">
+    <h4>색상 — 청년비율 − 노년비율 (%p)</h4>
+    <div class="color-bar"></div>
+    <div class="color-labels">
+      <span>노년 우세<br>(&minus;57)</span>
+      <span>균형<br>(0)</span>
+      <span>청년 우세<br>(+53)</span>
+    </div>
+  </div>
+  <div class="legend-section">
+    <h4>원 크기 — 1인가구 총수</h4>
+    <div class="size-examples">
+      <div class="size-item">
+        <div class="size-circle" style="width:10px;height:10px;"></div>
+        <span class="size-label">2천</span>
+      </div>
+      <div class="size-item">
+        <div class="size-circle" style="width:18px;height:18px;"></div>
+        <span class="size-label">3만</span>
+      </div>
+      <div class="size-item">
+        <div class="size-circle" style="width:28px;height:28px;"></div>
+        <span class="size-label">10만</span>
+      </div>
+      <div class="size-item">
+        <div class="size-circle" style="width:40px;height:40px;"></div>
+        <span class="size-label">50만+</span>
+      </div>
+    </div>
+  </div>
+  <div class="legend-note">
+    💡 버블 클릭 시 상세 정보 확인<br>
+    마우스 휠로 줌 조절 가능
+  </div>
+</div>
+
+<div id="stats">
+  <h3>통계 요약</h3>
+  <div class="stat-row"><span class="stat-label">총 지역 수</span><span class="stat-value" id="s-total">243</span></div>
+  <div class="stat-row"><span class="stat-label">청년 우세 지역</span><span class="stat-value highlight-young" id="s-young">-</span></div>
+  <div class="stat-row"><span class="stat-label">노년 우세 지역</span><span class="stat-value highlight-old" id="s-old">-</span></div>
+  <div class="stat-top" id="s-top"></div>
+</div>
+
+<script>
+const DATA = [{"name": "가평군", "total": 11004.0, "young": 1863.0, "old": 4581.0, "young_pct": 16.9, "old_pct": 41.6, "diff": -24.7, "lat": 37.8315, "lng": 127.5097}, {"name": "강남구", "total": 79274.0, "young": 38492.0, "old": 14616.0, "young_pct": 48.6, "old_pct": 18.4, "diff": 30.2, "lat": 37.5172, "lng": 127.0473}, {"name": "강동구", "total": 65601.0, "young": 26599.0, "old": 16604.0, "young_pct": 40.5, "old_pct": 25.3, "diff": 15.2, "lat": 37.5301, "lng": 127.1238}, {"name": "강릉시", "total": 39796.0, "young": 11745.0, "old": 13555.0, "young_pct": 29.5, "old_pct": 34.1, "diff": -4.6, "lat": 37.7519, "lng": 128.8761}, {"name": "강북구", "total": 53705.0, "young": 17218.0, "old": 17191.0, "young_pct": 32.1, "old_pct": 32.0, "diff": 0.1, "lat": 37.6398, "lng": 127.0257}, {"name": "강서구", "total": 106748.0, "young": 52198.0, "old": 23386.0, "young_pct": 48.9, "old_pct": 21.9, "diff": 27.0, "lat": 37.5509, "lng": 126.8496}, {"name": "강진군", "total": 6527.0, "young": 685.0, "old": 3796.0, "young_pct": 10.5, "old_pct": 58.2, "diff": -47.7, "lat": 34.6417, "lng": 126.7678}, {"name": "강화군", "total": 9578.0, "young": 938.0, "old": 5153.0, "young_pct": 9.8, "old_pct": 53.8, "diff": -44.0, "lat": 37.7476, "lng": 126.4877}, {"name": "거제시", "total": 32956.0, "young": 7093.0, "old": 8121.0, "young_pct": 21.5, "old_pct": 24.6, "diff": -3.1, "lat": 34.8804, "lng": 128.6213}, {"name": "거창군", "total": 10789.0, "young": 1467.0, "old": 5362.0, "young_pct": 13.6, "old_pct": 49.7, "diff": -36.1, "lat": 35.6873, "lng": 127.9097}, {"name": "경산시", "total": 54789.0, "young": 23285.0, "old": 12934.0, "young_pct": 42.5, "old_pct": 23.6, "diff": 18.9, "lat": 35.8251, "lng": 128.7418}, {"name": "경주시", "total": 44875.0, "young": 10741.0, "old": 17031.0, "young_pct": 23.9, "old_pct": 38.0, "diff": -14.1, "lat": 35.8562, "lng": 129.2247}, {"name": "계룡시", "total": 5379.0, "young": 1410.0, "old": 1564.0, "young_pct": 26.2, "old_pct": 29.1, "diff": -2.9, "lat": 36.2747, "lng": 127.2487}, {"name": "계양구", "total": 37133.0, "young": 9180.0, "old": 10819.0, "young_pct": 24.7, "old_pct": 29.1, "diff": -4.4, "lat": 37.5374, "lng": 126.7382}, {"name": "고령군", "total": 5464.0, "young": 485.0, "old": 2932.0, "young_pct": 8.9, "old_pct": 53.7, "diff": -44.8, "lat": 35.7276, "lng": 128.2638}, {"name": "고성군", "total": 5371.0, "young": 854.0, "old": 2400.0, "young_pct": 15.9, "old_pct": 44.7, "diff": -28.8, "lat": 34.9731, "lng": 128.3227}, {"name": "고양시", "total": 129653.0, "young": 39478.0, "old": 35529.0, "young_pct": 30.4, "old_pct": 27.4, "diff": 3.0, "lat": 37.6564, "lng": 126.835}, {"name": "고창군", "total": 9685.0, "young": 894.0, "old": 5688.0, "young_pct": 9.2, "old_pct": 58.7, "diff": -49.5, "lat": 35.4357, "lng": 126.702}, {"name": "고흥군", "total": 13252.0, "young": 880.0, "old": 8455.0, "young_pct": 6.6, "old_pct": 63.8, "diff": -57.2, "lat": 34.6047, "lng": 127.2787}, {"name": "곡성군", "total": 5905.0, "young": 878.0, "old": 3086.0, "young_pct": 14.9, "old_pct": 52.3, "diff": -37.4, "lat": 35.2818, "lng": 127.2919}, {"name": "공주시", "total": 19782.0, "young": 5596.0, "old": 7353.0, "young_pct": 28.3, "old_pct": 37.2, "diff": -8.9, "lat": 36.4465, "lng": 127.1192}, {"name": "과천시", "total": 5068.0, "young": 1517.0, "old": 1753.0, "young_pct": 29.9, "old_pct": 34.6, "diff": -4.7, "lat": 37.4292, "lng": 126.9878}, {"name": "관악구", "total": 153605.0, "young": 100664.0, "old": 18862.0, "young_pct": 65.5, "old_pct": 12.3, "diff": 53.2, "lat": 37.4784, "lng": 126.9516}, {"name": "광명시", "total": 27741.0, "young": 7504.0, "old": 9392.0, "young_pct": 27.1, "old_pct": 33.9, "diff": -6.8, "lat": 37.4784, "lng": 126.8666}, {"name": "광산구", "total": 55658.0, "young": 21200.0, "old": 11162.0, "young_pct": 38.1, "old_pct": 20.1, "diff": 18.0, "lat": 35.1395, "lng": 126.7935}, {"name": "광양시", "total": 21398.0, "young": 5555.0, "old": 5875.0, "young_pct": 26.0, "old_pct": 27.5, "diff": -1.5, "lat": 34.9404, "lng": 127.6959}, {"name": "광주시", "total": 44466.0, "young": 11494.0, "old": 10986.0, "young_pct": 25.8, "old_pct": 24.7, "diff": 1.1, "lat": 37.4296, "lng": 127.255}, {"name": "광진구", "total": 72933.0, "young": 41886.0, "old": 11148.0, "young_pct": 57.4, "old_pct": 15.3, "diff": 42.1, "lat": 37.5384, "lng": 127.0822}, {"name": "괴산군", "total": 7900.0, "young": 1020.0, "old": 3775.0, "young_pct": 12.9, "old_pct": 47.8, "diff": -34.9, "lat": 36.8154, "lng": 127.787}, {"name": "구례군", "total": 4627.0, "young": 339.0, "old": 2609.0, "young_pct": 7.3, "old_pct": 56.4, "diff": -49.1, "lat": 35.2023, "lng": 127.4632}, {"name": "구로구", "total": 62632.0, "young": 27047.0, "old": 15352.0, "young_pct": 43.2, "old_pct": 24.5, "diff": 18.7, "lat": 37.4954, "lng": 126.8874}, {"name": "구리시", "total": 22330.0, "young": 6056.0, "old": 6532.0, "young_pct": 27.1, "old_pct": 29.3, "diff": -2.2, "lat": 37.5943, "lng": 127.1296}, {"name": "구미시", "total": 67507.0, "young": 28246.0, "old": 11926.0, "young_pct": 41.8, "old_pct": 17.7, "diff": 24.1, "lat": 36.1196, "lng": 128.3444}, {"name": "군산시", "total": 44562.0, "young": 11682.0, "old": 14844.0, "young_pct": 26.2, "old_pct": 33.3, "diff": -7.1, "lat": 35.9678, "lng": 126.7368}, {"name": "군위군", "total": 3969.0, "young": 335.0, "old": 2415.0, "young_pct": 8.4, "old_pct": 60.8, "diff": -52.4, "lat": 36.2392, "lng": 128.5721}, {"name": "군포시", "total": 32652.0, "young": 9975.0, "old": 9754.0, "young_pct": 30.5, "old_pct": 29.9, "diff": 0.6, "lat": 37.3616, "lng": 126.9352}, {"name": "권선구", "total": 54333.0, "young": 21335.0, "old": 11210.0, "young_pct": 39.3, "old_pct": 20.6, "diff": 18.7, "lat": 37.2583, "lng": 126.9993}, {"name": "금산군", "total": 9380.0, "young": 1501.0, "old": 4378.0, "young_pct": 16.0, "old_pct": 46.7, "diff": -30.7, "lat": 36.1082, "lng": 127.4878}, {"name": "금정구", "total": 40977.0, "young": 15278.0, "old": 13189.0, "young_pct": 37.3, "old_pct": 32.2, "diff": 5.1, "lat": 35.2429, "lng": 129.0921}, {"name": "금천구", "total": 53858.0, "young": 26494.0, "old": 10700.0, "young_pct": 49.2, "old_pct": 19.9, "diff": 29.3, "lat": 37.4569, "lng": 126.8955}, {"name": "기장군", "total": 23001.0, "young": 5855.0, "old": 7839.0, "young_pct": 25.5, "old_pct": 34.1, "diff": -8.6, "lat": 35.2448, "lng": 129.2224}, {"name": "기흥구", "total": 43181.0, "young": 16358.0, "old": 11045.0, "young_pct": 37.9, "old_pct": 25.6, "diff": 12.3, "lat": 37.2751, "lng": 127.1154}, {"name": "김제시", "total": 14314.0, "young": 1617.0, "old": 7674.0, "young_pct": 11.3, "old_pct": 53.6, "diff": -42.3, "lat": 35.8033, "lng": 126.881}, {"name": "김천시", "total": 23211.0, "young": 5512.0, "old": 9255.0, "young_pct": 23.7, "old_pct": 39.9, "diff": -16.2, "lat": 36.1397, "lng": 128.1136}, {"name": "김포시", "total": 54052.0, "young": 18060.0, "old": 13516.0, "young_pct": 33.4, "old_pct": 25.0, "diff": 8.4, "lat": 37.6155, "lng": 126.7157}, {"name": "김해시", "total": 69026.0, "young": 18191.0, "old": 18729.0, "young_pct": 26.4, "old_pct": 27.1, "diff": -0.7, "lat": 35.2285, "lng": 128.8891}, {"name": "나주시", "total": 21110.0, "young": 5773.0, "old": 7656.0, "young_pct": 27.3, "old_pct": 36.3, "diff": -9.0, "lat": 35.016, "lng": 126.7107}, {"name": "남구", "total": 42133.0, "young": 16217.0, "old": 13174.0, "young_pct": 38.5, "old_pct": 31.3, "diff": 7.2, "lat": 35.1352, "lng": 129.1015}, {"name": "남동구", "total": 71921.0, "young": 21098.0, "old": 20997.0, "young_pct": 29.3, "old_pct": 29.2, "diff": 0.1, "lat": 37.4469, "lng": 126.7314}, {"name": "남양주시", "total": 72251.0, "young": 17626.0, "old": 23357.0, "young_pct": 24.4, "old_pct": 32.3, "diff": -7.9, "lat": 37.636, "lng": 127.2164}, {"name": "남원시", "total": 13482.0, "young": 1822.0, "old": 6646.0, "young_pct": 13.5, "old_pct": 49.3, "diff": -35.8, "lat": 35.4164, "lng": 127.3899}, {"name": "남해군", "total": 8152.0, "young": 653.0, "old": 5047.0, "young_pct": 8.0, "old_pct": 61.9, "diff": -53.9, "lat": 34.8376, "lng": 127.8922}, {"name": "노원구", "total": 67182.0, "young": 21006.0, "old": 23808.0, "young_pct": 31.3, "old_pct": 35.4, "diff": -4.1, "lat": 37.6543, "lng": 127.0568}, {"name": "논산시", "total": 19515.0, "young": 3977.0, "old": 8578.0, "young_pct": 20.4, "old_pct": 44.0, "diff": -23.6, "lat": 36.1873, "lng": 127.0992}, {"name": "단양군", "total": 5365.0, "young": 496.0, "old": 2801.0, "young_pct": 9.2, "old_pct": 52.2, "diff": -43.0, "lat": 36.9848, "lng": 128.3653}, {"name": "단원구", "total": 44403.0, "young": 15657.0, "old": 9070.0, "young_pct": 35.3, "old_pct": 20.4, "diff": 14.9, "lat": 37.3219, "lng": 126.8314}, {"name": "달서구", "total": 79175.0, "young": 24145.0, "old": 24326.0, "young_pct": 30.5, "old_pct": 30.7, "diff": -0.2, "lat": 35.8298, "lng": 128.5322}, {"name": "달성군", "total": 31738.0, "young": 9421.0, "old": 8851.0, "young_pct": 29.7, "old_pct": 27.9, "diff": 1.8, "lat": 35.7749, "lng": 128.4313}, {"name": "담양군", "total": 7017.0, "young": 715.0, "old": 3654.0, "young_pct": 10.2, "old_pct": 52.1, "diff": -41.9, "lat": 35.3215, "lng": 126.9882}, {"name": "당진시", "total": 30221.0, "young": 7903.0, "old": 8535.0, "young_pct": 26.2, "old_pct": 28.2, "diff": -2.0, "lat": 36.8896, "lng": 126.6458}, {"name": "대덕구", "total": 28673.0, "young": 8337.0, "old": 8554.0, "young_pct": 29.1, "old_pct": 29.8, "diff": -0.7, "lat": 36.3464, "lng": 127.4145}, {"name": "덕양구", "total": 66108.0, "young": 20210.0, "old": 18857.0, "young_pct": 30.6, "old_pct": 28.5, "diff": 2.1, "lat": 37.6342, "lng": 126.8356}, {"name": "덕진구", "total": 50184.0, "young": 19755.0, "old": 12255.0, "young_pct": 39.4, "old_pct": 24.4, "diff": 15.0, "lat": 35.8497, "lng": 127.1313}, {"name": "도봉구", "total": 43347.0, "young": 11915.0, "old": 15155.0, "young_pct": 27.5, "old_pct": 35.0, "diff": -7.5, "lat": 37.6688, "lng": 127.0471}, {"name": "동구", "total": 18899.0, "young": 5124.0, "old": 7377.0, "young_pct": 27.1, "old_pct": 39.0, "diff": -11.9, "lat": 35.1029, "lng": 129.0377}, {"name": "동남구", "total": 45407.0, "young": 17610.0, "old": 10332.0, "young_pct": 38.8, "old_pct": 22.8, "diff": 16.0, "lat": 36.7997, "lng": 127.1543}, {"name": "동대문구", "total": 72355.0, "young": 38179.0, "old": 14633.0, "young_pct": 52.8, "old_pct": 20.2, "diff": 32.6, "lat": 37.5744, "lng": 127.0396}, {"name": "동두천시", "total": 14739.0, "young": 2453.0, "old": 6090.0, "young_pct": 16.6, "old_pct": 41.3, "diff": -24.7, "lat": 37.9036, "lng": 127.0607}, {"name": "동래구", "total": 36125.0, "young": 9910.0, "old": 13351.0, "young_pct": 27.4, "old_pct": 37.0, "diff": -9.6, "lat": 35.206, "lng": 129.0838}, {"name": "동부", "total": 524516.0, "young": 166292.0, "old": 179337.0, "young_pct": 31.7, "old_pct": 34.2, "diff": -2.5, "lat": 33.489, "lng": 126.891}, {"name": "동안구", "total": 31648.0, "young": 11647.0, "old": 8346.0, "young_pct": 36.8, "old_pct": 26.4, "diff": 10.4, "lat": 37.3943, "lng": 126.9554}, {"name": "동작구", "total": 75148.0, "young": 43864.0, "old": 12954.0, "young_pct": 58.4, "old_pct": 17.2, "diff": 41.2, "lat": 37.5124, "lng": 126.9393}, {"name": "동해시", "total": 14626.0, "young": 2610.0, "old": 5844.0, "young_pct": 17.8, "old_pct": 40.0, "diff": -22.2, "lat": 37.5244, "lng": 129.1148}, {"name": "마산합포구", "total": 30202.0, "young": 6925.0, "old": 11919.0, "young_pct": 22.9, "old_pct": 39.5, "diff": -16.6, "lat": 35.1856, "lng": 128.564}, {"name": "마산회원구", "total": 26291.0, "young": 4692.0, "old": 10484.0, "young_pct": 17.8, "old_pct": 39.9, "diff": -22.1, "lat": 35.2183, "lng": 128.5823}, {"name": "마포구", "total": 73327.0, "young": 42436.0, "old": 11101.0, "young_pct": 57.9, "old_pct": 15.1, "diff": 42.8, "lat": 37.5638, "lng": 126.9084}, {"name": "만안구", "total": 29968.0, "young": 8845.0, "old": 9290.0, "young_pct": 29.5, "old_pct": 31.0, "diff": -1.5, "lat": 37.3887, "lng": 126.9578}, {"name": "면부", "total": 1130.0, "young": 81.0, "old": 645.0, "young_pct": 7.2, "old_pct": 57.1, "diff": -49.9, "lat": 33.3617, "lng": 126.5292}, {"name": "목포시", "total": 37828.0, "young": 8569.0, "old": 12704.0, "young_pct": 22.7, "old_pct": 33.6, "diff": -10.9, "lat": 34.8118, "lng": 126.3922}, {"name": "무안군", "total": 14749.0, "young": 5075.0, "old": 4690.0, "young_pct": 34.4, "old_pct": 31.8, "diff": 2.6, "lat": 34.9899, "lng": 126.4819}, {"name": "무주군", "total": 4328.0, "young": 428.0, "old": 2335.0, "young_pct": 9.9, "old_pct": 54.0, "diff": -44.1, "lat": 35.9073, "lng": 127.6609}, {"name": "문경시", "total": 12148.0, "young": 1548.0, "old": 6424.0, "young_pct": 12.7, "old_pct": 52.9, "diff": -40.2, "lat": 36.5863, "lng": 128.1871}, {"name": "미추홀구", "total": 68649.0, "young": 23371.0, "old": 18891.0, "young_pct": 34.0, "old_pct": 27.5, "diff": 6.5, "lat": 37.4638, "lng": 126.6505}, {"name": "밀양시", "total": 19153.0, "young": 2643.0, "old": 9701.0, "young_pct": 13.8, "old_pct": 50.7, "diff": -36.9, "lat": 35.5036, "lng": 128.7475}, {"name": "보령시", "total": 16573.0, "young": 2923.0, "old": 7409.0, "young_pct": 17.6, "old_pct": 44.7, "diff": -27.1, "lat": 36.3334, "lng": 126.6128}, {"name": "보성군", "total": 7693.0, "young": 474.0, "old": 4857.0, "young_pct": 6.2, "old_pct": 63.1, "diff": -56.9, "lat": 34.7715, "lng": 127.0802}, {"name": "보은군", "total": 5528.0, "young": 452.0, "old": 3274.0, "young_pct": 8.2, "old_pct": 59.2, "diff": -51.0, "lat": 36.4894, "lng": 127.7297}, {"name": "봉화군", "total": 5799.0, "young": 360.0, "old": 3421.0, "young_pct": 6.2, "old_pct": 59.0, "diff": -52.8, "lat": 36.8934, "lng": 128.7327}, {"name": "부산진구", "total": 73424.0, "young": 31314.0, "old": 20301.0, "young_pct": 42.6, "old_pct": 27.6, "diff": 15.0, "lat": 35.1631, "lng": 129.053}, {"name": "부안군", "total": 8848.0, "young": 818.0, "old": 5094.0, "young_pct": 9.2, "old_pct": 57.6, "diff": -48.4, "lat": 35.7316, "lng": 126.7332}, {"name": "부여군", "total": 10405.0, "young": 941.0, "old": 6144.0, "young_pct": 9.0, "old_pct": 59.0, "diff": -50.0, "lat": 36.2758, "lng": 126.9099}, {"name": "부천시", "total": 103159.0, "young": 28749.0, "old": 30349.0, "young_pct": 27.9, "old_pct": 29.4, "diff": -1.5, "lat": 37.5034, "lng": 126.766}, {"name": "부평구", "total": 67646.0, "young": 19961.0, "old": 20219.0, "young_pct": 29.5, "old_pct": 29.9, "diff": -0.4, "lat": 37.5085, "lng": 126.7218}, {"name": "북구", "total": 37910.0, "young": 7377.0, "old": 15973.0, "young_pct": 19.5, "old_pct": 42.1, "diff": -22.6, "lat": 35.1972, "lng": 129.0544}, {"name": "분당구", "total": 52173.0, "young": 22413.0, "old": 11986.0, "young_pct": 43.0, "old_pct": 23.0, "diff": 20.0, "lat": 37.3825, "lng": 127.1186}, {"name": "사상구", "total": 37200.0, "young": 10938.0, "old": 12386.0, "young_pct": 29.4, "old_pct": 33.3, "diff": -3.9, "lat": 35.153, "lng": 128.993}, {"name": "사천시", "total": 19221.0, "young": 3852.0, "old": 7565.0, "young_pct": 20.0, "old_pct": 39.4, "diff": -19.4, "lat": 35.0036, "lng": 128.065}, {"name": "사하구", "total": 47771.0, "young": 12086.0, "old": 17678.0, "young_pct": 25.3, "old_pct": 37.0, "diff": -11.7, "lat": 35.1046, "lng": 128.9746}, {"name": "산청군", "total": 6891.0, "young": 413.0, "old": 3950.0, "young_pct": 6.0, "old_pct": 57.3, "diff": -51.3, "lat": 35.4153, "lng": 127.8732}, {"name": "삼척시", "total": 12918.0, "young": 3259.0, "old": 5221.0, "young_pct": 25.2, "old_pct": 40.4, "diff": -15.2, "lat": 37.4499, "lng": 129.165}, {"name": "상당구", "total": 26686.0, "young": 6748.0, "old": 8865.0, "young_pct": 25.3, "old_pct": 33.2, "diff": -7.9, "lat": 36.6425, "lng": 127.4892}, {"name": "상록구", "total": 50947.0, "young": 15789.0, "old": 11501.0, "young_pct": 31.0, "old_pct": 22.6, "diff": 8.4, "lat": 37.2995, "lng": 126.8559}, {"name": "상주시", "total": 17591.0, "young": 2897.0, "old": 8888.0, "young_pct": 16.5, "old_pct": 50.5, "diff": -34.0, "lat": 36.4108, "lng": 128.16}, {"name": "서구", "total": 21181.0, "young": 6166.0, "old": 8357.0, "young_pct": 29.1, "old_pct": 39.5, "diff": -10.4, "lat": 37.5543, "lng": 126.9382}, {"name": "서귀포시", "total": 26312.0, "young": 5221.0, "old": 8272.0, "young_pct": 19.8, "old_pct": 31.4, "diff": -11.6, "lat": 33.2541, "lng": 126.56}, {"name": "서대문구", "total": 56770.0, "young": 30256.0, "old": 11506.0, "young_pct": 53.3, "old_pct": 20.3, "diff": 33.0, "lat": 37.5791, "lng": 126.9368}, {"name": "서북구", "total": 68945.0, "young": 34139.0, "old": 9834.0, "young_pct": 49.5, "old_pct": 14.3, "diff": 35.2, "lat": 36.8211, "lng": 127.1469}, {"name": "서산시", "total": 28426.0, "young": 8412.0, "old": 8688.0, "young_pct": 29.6, "old_pct": 30.6, "diff": -1.0, "lat": 36.7845, "lng": 126.4502}, {"name": "서원구", "total": 34718.0, "young": 13567.0, "old": 8939.0, "young_pct": 39.1, "old_pct": 25.7, "diff": 13.4, "lat": 36.6373, "lng": 127.456}, {"name": "서천군", "total": 8832.0, "young": 753.0, "old": 5285.0, "young_pct": 8.5, "old_pct": 59.8, "diff": -51.3, "lat": 36.0795, "lng": 126.6912}, {"name": "서초구", "total": 49443.0, "young": 23643.0, "old": 9309.0, "young_pct": 47.8, "old_pct": 18.8, "diff": 29.0, "lat": 37.4837, "lng": 127.0324}, {"name": "성남시", "total": 134409.0, "young": 51015.0, "old": 33231.0, "young_pct": 38.0, "old_pct": 24.7, "diff": 13.3, "lat": 37.4202, "lng": 127.1261}, {"name": "성동구", "total": 48442.0, "young": 23998.0, "old": 9647.0, "young_pct": 49.5, "old_pct": 19.9, "diff": 29.6, "lat": 37.5633, "lng": 127.0369}, {"name": "성북구", "total": 70230.0, "young": 34276.0, "old": 15827.0, "young_pct": 48.8, "old_pct": 22.5, "diff": 26.3, "lat": 37.5894, "lng": 127.0167}, {"name": "성산구", "total": 32336.0, "young": 12457.0, "old": 6052.0, "young_pct": 38.5, "old_pct": 18.7, "diff": 19.8, "lat": 35.223, "lng": 128.6802}, {"name": "성주군", "total": 7517.0, "young": 679.0, "old": 3848.0, "young_pct": 9.0, "old_pct": 51.2, "diff": -42.2, "lat": 35.9197, "lng": 128.282}, {"name": "세종시", "total": 52339.0, "young": 26066.0, "old": 8326.0, "young_pct": 49.8, "old_pct": 15.9, "diff": 33.9, "lat": 36.4801, "lng": 127.289}, {"name": "소사구", "total": 27386.0, "young": 6418.0, "old": 9568.0, "young_pct": 23.4, "old_pct": 34.9, "diff": -11.5, "lat": 37.4843, "lng": 126.7992}, {"name": "속초시", "total": 15008.0, "young": 2935.0, "old": 5396.0, "young_pct": 19.6, "old_pct": 36.0, "diff": -16.4, "lat": 38.207, "lng": 128.5918}, {"name": "송파구", "total": 89720.0, "young": 43387.0, "old": 17646.0, "young_pct": 48.4, "old_pct": 19.7, "diff": 28.7, "lat": 37.5145, "lng": 127.1059}, {"name": "수성구", "total": 48812.0, "young": 13562.0, "old": 16982.0, "young_pct": 27.8, "old_pct": 34.8, "diff": -7.0, "lat": 35.8582, "lng": 128.6302}, {"name": "수영구", "total": 34205.0, "young": 14142.0, "old": 9915.0, "young_pct": 41.3, "old_pct": 29.0, "diff": 12.3, "lat": 35.1452, "lng": 129.1131}, {"name": "수원시", "total": 184111.0, "young": 84515.0, "old": 35882.0, "young_pct": 45.9, "old_pct": 19.5, "diff": 26.4, "lat": 37.2636, "lng": 127.0286}, {"name": "수정구", "total": 46305.0, "young": 16363.0, "old": 11712.0, "young_pct": 35.3, "old_pct": 25.3, "diff": 10.0, "lat": 37.4423, "lng": 127.1367}, {"name": "수지구", "total": 29531.0, "young": 13450.0, "old": 7279.0, "young_pct": 45.5, "old_pct": 24.6, "diff": 20.9, "lat": 37.322, "lng": 127.0941}, {"name": "순창군", "total": 4489.0, "young": 410.0, "old": 2625.0, "young_pct": 9.1, "old_pct": 58.5, "diff": -49.4, "lat": 35.3743, "lng": 127.1378}, {"name": "순천시", "total": 38970.0, "young": 11086.0, "old": 12804.0, "young_pct": 28.4, "old_pct": 32.9, "diff": -4.5, "lat": 34.9506, "lng": 127.4872}, {"name": "시흥시", "total": 69466.0, "young": 21818.0, "old": 13953.0, "young_pct": 31.4, "old_pct": 20.1, "diff": 11.3, "lat": 37.38, "lng": 126.803}, {"name": "신안군", "total": 7257.0, "young": 611.0, "old": 3735.0, "young_pct": 8.4, "old_pct": 51.5, "diff": -43.1, "lat": 34.8222, "lng": 126.1021}, {"name": "아산시", "total": 57275.0, "young": 21717.0, "old": 12605.0, "young_pct": 37.9, "old_pct": 22.0, "diff": 15.9, "lat": 36.7898, "lng": 127.0021}, {"name": "안동시", "total": 30172.0, "young": 8129.0, "old": 11766.0, "young_pct": 26.9, "old_pct": 39.0, "diff": -12.1, "lat": 36.5684, "lng": 128.7294}, {"name": "안산시", "total": 95350.0, "young": 31446.0, "old": 20571.0, "young_pct": 33.0, "old_pct": 21.6, "diff": 11.4, "lat": 37.3219, "lng": 126.8314}, {"name": "안성시", "total": 32385.0, "young": 10948.0, "old": 8329.0, "young_pct": 33.8, "old_pct": 25.7, "diff": 8.1, "lat": 37.0079, "lng": 127.2798}, {"name": "안양시", "total": 61616.0, "young": 20492.0, "old": 17636.0, "young_pct": 33.3, "old_pct": 28.6, "diff": 4.7, "lat": 37.3943, "lng": 126.9554}, {"name": "양구군", "total": 3267.0, "young": 824.0, "old": 1271.0, "young_pct": 25.2, "old_pct": 38.9, "diff": -13.7, "lat": 38.1053, "lng": 127.9897}, {"name": "양산시", "total": 50226.0, "young": 12803.0, "old": 15462.0, "young_pct": 25.5, "old_pct": 30.8, "diff": -5.3, "lat": 35.335, "lng": 129.0366}, {"name": "양양군", "total": 5548.0, "young": 699.0, "old": 2611.0, "young_pct": 12.6, "old_pct": 47.1, "diff": -34.5, "lat": 38.0748, "lng": 128.619}, {"name": "양주시", "total": 34604.0, "young": 9340.0, "old": 10185.0, "young_pct": 27.0, "old_pct": 29.4, "diff": -2.4, "lat": 37.7854, "lng": 127.0458}, {"name": "양천구", "total": 47886.0, "young": 15098.0, "old": 15439.0, "young_pct": 31.5, "old_pct": 32.2, "diff": -0.7, "lat": 37.517, "lng": 126.8666}, {"name": "양평군", "total": 18544.0, "young": 2474.0, "old": 8085.0, "young_pct": 13.3, "old_pct": 43.6, "diff": -30.3, "lat": 37.4918, "lng": 127.4878}, {"name": "여수시", "total": 40319.0, "young": 9666.0, "old": 14860.0, "young_pct": 24.0, "old_pct": 36.9, "diff": -12.9, "lat": 34.7604, "lng": 127.6622}, {"name": "여주시", "total": 17247.0, "young": 3779.0, "old": 6136.0, "young_pct": 21.9, "old_pct": 35.6, "diff": -13.7, "lat": 37.2981, "lng": 127.6375}, {"name": "연수구", "total": 40339.0, "young": 15544.0, "old": 8949.0, "young_pct": 38.5, "old_pct": 22.2, "diff": 16.3, "lat": 37.4104, "lng": 126.678}, {"name": "연제구", "total": 32878.0, "young": 10748.0, "old": 11024.0, "young_pct": 32.7, "old_pct": 33.5, "diff": -0.8, "lat": 35.1763, "lng": 129.0802}, {"name": "연천군", "total": 7186.0, "young": 1407.0, "old": 3406.0, "young_pct": 19.6, "old_pct": 47.4, "diff": -27.8, "lat": 38.0961, "lng": 127.0748}, {"name": "영광군", "total": 8929.0, "young": 1266.0, "old": 4494.0, "young_pct": 14.2, "old_pct": 50.3, "diff": -36.1, "lat": 35.2773, "lng": 126.5121}, {"name": "영덕군", "total": 7676.0, "young": 637.0, "old": 4550.0, "young_pct": 8.3, "old_pct": 59.3, "diff": -51.0, "lat": 36.4153, "lng": 129.3653}, {"name": "영도구", "total": 20492.0, "young": 3473.0, "old": 9641.0, "young_pct": 16.9, "old_pct": 47.0, "diff": -30.1, "lat": 35.0896, "lng": 129.0679}, {"name": "영동군", "total": 8397.0, "young": 1079.0, "old": 4338.0, "young_pct": 12.8, "old_pct": 51.7, "diff": -38.9, "lat": 36.1748, "lng": 127.7832}, {"name": "영등포구", "total": 79698.0, "young": 44900.0, "old": 13338.0, "young_pct": 56.3, "old_pct": 16.7, "diff": 39.6, "lat": 37.5264, "lng": 126.8962}, {"name": "영암군", "total": 10852.0, "young": 1757.0, "old": 4406.0, "young_pct": 16.2, "old_pct": 40.6, "diff": -24.4, "lat": 34.8001, "lng": 126.6967}, {"name": "영양군", "total": 3322.0, "young": 273.0, "old": 1946.0, "young_pct": 8.2, "old_pct": 58.6, "diff": -50.4, "lat": 36.6667, "lng": 129.1128}, {"name": "영월군", "total": 7817.0, "young": 793.0, "old": 3749.0, "young_pct": 10.1, "old_pct": 48.0, "diff": -37.9, "lat": 37.1839, "lng": 128.4615}, {"name": "영주시", "total": 17547.0, "young": 3517.0, "old": 7974.0, "young_pct": 20.0, "old_pct": 45.4, "diff": -25.4, "lat": 36.8052, "lng": 128.6236}, {"name": "영천시", "total": 18978.0, "young": 2481.0, "old": 8780.0, "young_pct": 13.1, "old_pct": 46.3, "diff": -33.2, "lat": 35.9735, "lng": 128.938}, {"name": "영통구", "total": 52242.0, "young": 30712.0, "old": 6567.0, "young_pct": 58.8, "old_pct": 12.6, "diff": 46.2, "lat": 37.2643, "lng": 127.0544}, {"name": "예산군", "total": 13540.0, "young": 2038.0, "old": 6585.0, "young_pct": 15.1, "old_pct": 48.6, "diff": -33.5, "lat": 36.68, "lng": 126.8498}, {"name": "예천군", "total": 9349.0, "young": 1412.0, "old": 4992.0, "young_pct": 15.1, "old_pct": 53.4, "diff": -38.3, "lat": 36.6554, "lng": 128.2955}, {"name": "오산시", "total": 38659.0, "young": 15933.0, "old": 6344.0, "young_pct": 41.2, "old_pct": 16.4, "diff": 24.8, "lat": 37.1497, "lng": 127.0769}, {"name": "오정구", "total": 21288.0, "young": 3919.0, "old": 7159.0, "young_pct": 18.4, "old_pct": 33.6, "diff": -15.2, "lat": 37.5034, "lng": 126.766}, {"name": "옥천군", "total": 7623.0, "young": 695.0, "old": 4151.0, "young_pct": 9.1, "old_pct": 54.5, "diff": -45.4, "lat": 36.3062, "lng": 127.5715}, {"name": "옹진군", "total": 4793.0, "young": 1214.0, "old": 1643.0, "young_pct": 25.3, "old_pct": 34.3, "diff": -9.0, "lat": 37.4476, "lng": 126.3544}, {"name": "완도군", "total": 8386.0, "young": 812.0, "old": 4580.0, "young_pct": 9.7, "old_pct": 54.6, "diff": -44.9, "lat": 34.3103, "lng": 126.754}, {"name": "완산구", "total": 55798.0, "young": 19366.0, "old": 15948.0, "young_pct": 34.7, "old_pct": 28.6, "diff": 6.1, "lat": 35.8219, "lng": 127.1225}, {"name": "완주군", "total": 17360.0, "young": 4978.0, "old": 5631.0, "young_pct": 28.7, "old_pct": 32.4, "diff": -3.7, "lat": 35.9083, "lng": 127.1621}, {"name": "용산구", "total": 40445.0, "young": 20312.0, "old": 7441.0, "young_pct": 50.2, "old_pct": 18.4, "diff": 31.8, "lat": 37.5311, "lng": 126.981}, {"name": "용인시", "total": 110585.0, "young": 43419.0, "old": 26890.0, "young_pct": 39.3, "old_pct": 24.3, "diff": 15.0, "lat": 37.241, "lng": 127.1775}, {"name": "울릉군", "total": 2093.0, "young": 427.0, "old": 651.0, "young_pct": 20.4, "old_pct": 31.1, "diff": -10.7, "lat": 37.4844, "lng": 130.9059}, {"name": "울주군", "total": 28971.0, "young": 6732.0, "old": 9074.0, "young_pct": 23.2, "old_pct": 31.3, "diff": -8.1, "lat": 35.5231, "lng": 129.0025}, {"name": "울진군", "total": 9303.0, "young": 1496.0, "old": 4462.0, "young_pct": 16.1, "old_pct": 48.0, "diff": -31.9, "lat": 36.9933, "lng": 129.4003}, {"name": "원미구", "total": 54485.0, "young": 18412.0, "old": 13622.0, "young_pct": 33.8, "old_pct": 25.0, "diff": 8.8, "lat": 37.5034, "lng": 126.766}, {"name": "원주시", "total": 63311.0, "young": 21670.0, "old": 16567.0, "young_pct": 34.2, "old_pct": 26.2, "diff": 8.0, "lat": 37.3422, "lng": 127.9201}, {"name": "유성구", "total": 65805.0, "young": 37907.0, "old": 8651.0, "young_pct": 57.6, "old_pct": 13.1, "diff": 44.5, "lat": 36.3624, "lng": 127.3564}, {"name": "은평구", "total": 70568.0, "young": 27530.0, "old": 19415.0, "young_pct": 39.0, "old_pct": 27.5, "diff": 11.5, "lat": 37.6026, "lng": 126.929}, {"name": "음성군", "total": 17950.0, "young": 4360.0, "old": 5682.0, "young_pct": 24.3, "old_pct": 31.7, "diff": -7.4, "lat": 36.9398, "lng": 127.6875}, {"name": "읍부", "total": 21871.0, "young": 5774.0, "old": 7194.0, "young_pct": 26.4, "old_pct": 32.9, "diff": -6.5, "lat": 33.4502, "lng": 126.5702}, {"name": "의령군", "total": 5784.0, "young": 433.0, "old": 3462.0, "young_pct": 7.5, "old_pct": 59.9, "diff": -52.4, "lat": 35.3218, "lng": 128.2618}, {"name": "의성군", "total": 10618.0, "young": 842.0, "old": 6576.0, "young_pct": 7.9, "old_pct": 61.9, "diff": -54.0, "lat": 36.3527, "lng": 128.6972}, {"name": "의왕시", "total": 14092.0, "young": 4473.0, "old": 4377.0, "young_pct": 31.7, "old_pct": 31.1, "diff": 0.6, "lat": 37.3444, "lng": 126.9683}, {"name": "의정부시", "total": 63852.0, "young": 18436.0, "old": 19282.0, "young_pct": 28.9, "old_pct": 30.2, "diff": -1.3, "lat": 37.7382, "lng": 127.0338}, {"name": "의창구", "total": 30867.0, "young": 8480.0, "old": 8505.0, "young_pct": 27.5, "old_pct": 27.6, "diff": -0.1, "lat": 35.227, "lng": 128.653}, {"name": "이천시", "total": 31518.0, "young": 11494.0, "old": 7596.0, "young_pct": 36.5, "old_pct": 24.1, "diff": 12.4, "lat": 37.2723, "lng": 127.435}, {"name": "익산시", "total": 46643.0, "young": 14013.0, "old": 15980.0, "young_pct": 30.0, "old_pct": 34.3, "diff": -4.3, "lat": 35.9483, "lng": 126.9544}, {"name": "인제군", "total": 5619.0, "young": 1474.0, "old": 1963.0, "young_pct": 26.2, "old_pct": 34.9, "diff": -8.7, "lat": 38.0694, "lng": 128.1691}, {"name": "일산동구", "total": 37647.0, "young": 12653.0, "old": 8366.0, "young_pct": 33.6, "old_pct": 22.2, "diff": 11.4, "lat": 37.6582, "lng": 126.7828}, {"name": "일산서구", "total": 25898.0, "young": 6615.0, "old": 8306.0, "young_pct": 25.5, "old_pct": 32.1, "diff": -6.6, "lat": 37.6719, "lng": 126.7486}, {"name": "임실군", "total": 4852.0, "young": 676.0, "old": 2740.0, "young_pct": 13.9, "old_pct": 56.5, "diff": -42.6, "lat": 35.6173, "lng": 127.2891}, {"name": "장성군", "total": 6433.0, "young": 937.0, "old": 3306.0, "young_pct": 14.6, "old_pct": 51.4, "diff": -36.8, "lat": 35.3018, "lng": 126.7891}, {"name": "장수군", "total": 3652.0, "young": 270.0, "old": 2096.0, "young_pct": 7.4, "old_pct": 57.4, "diff": -50.0, "lat": 35.6472, "lng": 127.5214}, {"name": "장안구", "total": 38793.0, "young": 14948.0, "old": 10023.0, "young_pct": 38.5, "old_pct": 25.8, "diff": 12.7, "lat": 37.3007, "lng": 127.0086}, {"name": "장흥군", "total": 6894.0, "young": 650.0, "old": 4104.0, "young_pct": 9.4, "old_pct": 59.5, "diff": -50.1, "lat": 34.6817, "lng": 126.9073}, {"name": "전주시", "total": 105982.0, "young": 39121.0, "old": 28203.0, "young_pct": 36.9, "old_pct": 26.6, "diff": 10.3, "lat": 35.8219, "lng": 127.1225}, {"name": "정선군", "total": 7122.0, "young": 765.0, "old": 3298.0, "young_pct": 10.7, "old_pct": 46.3, "diff": -35.6, "lat": 37.38, "lng": 128.6603}, {"name": "정읍시", "total": 18501.0, "young": 2652.0, "old": 9054.0, "young_pct": 14.3, "old_pct": 48.9, "diff": -34.6, "lat": 35.5699, "lng": 126.8564}, {"name": "제주시", "total": 68668.0, "young": 20394.0, "old": 16897.0, "young_pct": 29.7, "old_pct": 24.6, "diff": 5.1, "lat": 33.4996, "lng": 126.5312}, {"name": "제천시", "total": 23101.0, "young": 5459.0, "old": 8959.0, "young_pct": 23.6, "old_pct": 38.8, "diff": -15.2, "lat": 37.1327, "lng": 128.1907}, {"name": "종로구", "total": 29779.0, "young": 14407.0, "old": 6118.0, "young_pct": 48.4, "old_pct": 20.5, "diff": 27.9, "lat": 37.5729, "lng": 126.9794}, {"name": "중구", "total": 28968.0, "young": 13701.0, "old": 6187.0, "young_pct": 47.3, "old_pct": 21.4, "diff": 25.9, "lat": 37.564, "lng": 126.9975}, {"name": "중랑구", "total": 69149.0, "young": 24754.0, "old": 18803.0, "young_pct": 35.8, "old_pct": 27.2, "diff": 8.6, "lat": 37.6065, "lng": 127.0927}, {"name": "중원구", "total": 35931.0, "young": 12239.0, "old": 9533.0, "young_pct": 34.1, "old_pct": 26.5, "diff": 7.6, "lat": 37.4423, "lng": 127.1367}, {"name": "증평군", "total": 6876.0, "young": 2083.0, "old": 2088.0, "young_pct": 30.3, "old_pct": 30.4, "diff": -0.1, "lat": 36.7853, "lng": 127.5815}, {"name": "진도군", "total": 5804.0, "young": 588.0, "old": 3287.0, "young_pct": 10.1, "old_pct": 56.6, "diff": -46.5, "lat": 34.4873, "lng": 126.2632}, {"name": "진안군", "total": 4287.0, "young": 305.0, "old": 2415.0, "young_pct": 7.1, "old_pct": 56.3, "diff": -49.2, "lat": 35.7916, "lng": 127.4243}, {"name": "진주시", "total": 57549.0, "young": 20065.0, "old": 17659.0, "young_pct": 34.9, "old_pct": 30.7, "diff": 4.2, "lat": 35.1798, "lng": 128.1076}, {"name": "진천군", "total": 14658.0, "young": 4297.0, "old": 3812.0, "young_pct": 29.3, "old_pct": 26.0, "diff": 3.3, "lat": 36.8561, "lng": 127.4355}, {"name": "진해구", "total": 27922.0, "young": 7115.0, "old": 8414.0, "young_pct": 25.5, "old_pct": 30.1, "diff": -4.6, "lat": 35.1534, "lng": 128.6892}, {"name": "창녕군", "total": 11146.0, "young": 1013.0, "old": 6054.0, "young_pct": 9.1, "old_pct": 54.3, "diff": -45.2, "lat": 35.5446, "lng": 128.4918}, {"name": "창원시", "total": 147618.0, "young": 39669.0, "old": 45374.0, "young_pct": 26.9, "old_pct": 30.7, "diff": -3.8, "lat": 35.2279, "lng": 128.6817}, {"name": "처인구", "total": 37873.0, "young": 13611.0, "old": 8566.0, "young_pct": 35.9, "old_pct": 22.6, "diff": 13.3, "lat": 37.241, "lng": 127.1775}, {"name": "천안시", "total": 114352.0, "young": 51749.0, "old": 20166.0, "young_pct": 45.3, "old_pct": 17.6, "diff": 27.7, "lat": 36.8151, "lng": 127.1139}, {"name": "철원군", "total": 6072.0, "young": 1218.0, "old": 2703.0, "young_pct": 20.1, "old_pct": 44.5, "diff": -24.4, "lat": 38.1464, "lng": 127.3132}, {"name": "청도군", "total": 7770.0, "young": 502.0, "old": 4683.0, "young_pct": 6.5, "old_pct": 60.3, "diff": -53.8, "lat": 35.6467, "lng": 128.7342}, {"name": "청송군", "total": 5207.0, "young": 570.0, "old": 2835.0, "young_pct": 10.9, "old_pct": 54.4, "diff": -43.5, "lat": 36.4359, "lng": 129.0568}, {"name": "청양군", "total": 5299.0, "young": 540.0, "old": 2950.0, "young_pct": 10.2, "old_pct": 55.7, "diff": -45.5, "lat": 36.4593, "lng": 126.8022}, {"name": "청원구", "total": 34147.0, "young": 14709.0, "old": 7071.0, "young_pct": 43.1, "old_pct": 20.7, "diff": 22.4, "lat": 36.6425, "lng": 127.4892}, {"name": "청주시", "total": 147442.0, "young": 59450.0, "old": 33455.0, "young_pct": 40.3, "old_pct": 22.7, "diff": 17.6, "lat": 36.6424, "lng": 127.489}, {"name": "춘천시", "total": 50484.0, "young": 19525.0, "old": 14262.0, "young_pct": 38.7, "old_pct": 28.3, "diff": 10.4, "lat": 37.8747, "lng": 127.7341}, {"name": "충주시", "total": 39350.0, "young": 13219.0, "old": 12044.0, "young_pct": 33.6, "old_pct": 30.6, "diff": 3.0, "lat": 36.9908, "lng": 127.9259}, {"name": "칠곡군", "total": 18783.0, "young": 4178.0, "old": 5253.0, "young_pct": 22.2, "old_pct": 28.0, "diff": -5.8, "lat": 35.9944, "lng": 128.4014}, {"name": "태백시", "total": 7562.0, "young": 1025.0, "old": 3549.0, "young_pct": 13.6, "old_pct": 46.9, "diff": -33.3, "lat": 37.1644, "lng": 128.9853}, {"name": "태안군", "total": 11729.0, "young": 1927.0, "old": 5430.0, "young_pct": 16.4, "old_pct": 46.3, "diff": -29.9, "lat": 36.7452, "lng": 126.2978}, {"name": "통영시", "total": 20253.0, "young": 3064.0, "old": 7972.0, "young_pct": 15.1, "old_pct": 39.4, "diff": -24.3, "lat": 34.8544, "lng": 128.4331}, {"name": "파주시", "total": 59018.0, "young": 18179.0, "old": 15669.0, "young_pct": 30.8, "old_pct": 26.5, "diff": 4.3, "lat": 37.7601, "lng": 126.7798}, {"name": "팔달구", "total": 38743.0, "young": 17520.0, "old": 8082.0, "young_pct": 45.2, "old_pct": 20.9, "diff": 24.3, "lat": 37.2912, "lng": 127.0161}, {"name": "평창군", "total": 8185.0, "young": 902.0, "old": 3775.0, "young_pct": 11.0, "old_pct": 46.1, "diff": -35.1, "lat": 37.3706, "lng": 128.3939}, {"name": "평택시", "total": 97089.0, "young": 39961.0, "old": 17752.0, "young_pct": 41.2, "old_pct": 18.3, "diff": 22.9, "lat": 36.9921, "lng": 127.1129}, {"name": "포천시", "total": 22914.0, "young": 4843.0, "old": 7997.0, "young_pct": 21.1, "old_pct": 34.9, "diff": -13.8, "lat": 37.8946, "lng": 127.2004}, {"name": "포항시", "total": 77434.0, "young": 20162.0, "old": 26495.0, "young_pct": 26.0, "old_pct": 34.2, "diff": -8.2, "lat": 36.019, "lng": 129.3435}, {"name": "하남시", "total": 40621.0, "young": 16282.0, "old": 9027.0, "young_pct": 40.1, "old_pct": 22.2, "diff": 17.9, "lat": 37.5393, "lng": 127.2148}, {"name": "하동군", "total": 7998.0, "young": 567.0, "old": 4525.0, "young_pct": 7.1, "old_pct": 56.6, "diff": -49.5, "lat": 35.0673, "lng": 127.7512}, {"name": "함안군", "total": 9882.0, "young": 943.0, "old": 5091.0, "young_pct": 9.5, "old_pct": 51.5, "diff": -42.0, "lat": 35.2727, "lng": 128.4063}, {"name": "함양군", "total": 7316.0, "young": 627.0, "old": 4225.0, "young_pct": 8.6, "old_pct": 57.8, "diff": -49.2, "lat": 35.5201, "lng": 127.7249}, {"name": "함평군", "total": 5688.0, "young": 401.0, "old": 3453.0, "young_pct": 7.0, "old_pct": 60.7, "diff": -53.7, "lat": 35.0657, "lng": 126.5161}, {"name": "합천군", "total": 9136.0, "young": 584.0, "old": 5749.0, "young_pct": 6.4, "old_pct": 62.9, "diff": -56.5, "lat": 35.5669, "lng": 128.1651}, {"name": "해남군", "total": 11640.0, "young": 1150.0, "old": 6616.0, "young_pct": 9.9, "old_pct": 56.8, "diff": -46.9, "lat": 34.5734, "lng": 126.5993}, {"name": "해운대구", "total": 51816.0, "young": 12733.0, "old": 19223.0, "young_pct": 24.6, "old_pct": 37.1, "diff": -12.5, "lat": 35.1631, "lng": 129.1597}, {"name": "홍성군", "total": 17415.0, "young": 4548.0, "old": 6569.0, "young_pct": 26.1, "old_pct": 37.7, "diff": -11.6, "lat": 36.6013, "lng": 126.6601}, {"name": "홍천군", "total": 12151.0, "young": 1846.0, "old": 5634.0, "young_pct": 15.2, "old_pct": 46.4, "diff": -31.2, "lat": 37.6968, "lng": 127.8882}, {"name": "화성시", "total": 124878.0, "young": 58706.0, "old": 19382.0, "young_pct": 47.0, "old_pct": 15.5, "diff": 31.5, "lat": 37.1994, "lng": 126.8317}, {"name": "화순군", "total": 10216.0, "young": 1248.0, "old": 5398.0, "young_pct": 12.2, "old_pct": 52.8, "diff": -40.6, "lat": 35.0647, "lng": 126.9866}, {"name": "화천군", "total": 4147.0, "young": 1030.0, "old": 1699.0, "young_pct": 24.8, "old_pct": 41.0, "diff": -16.2, "lat": 38.1064, "lng": 127.7083}, {"name": "횡성군", "total": 8105.0, "young": 791.0, "old": 3907.0, "young_pct": 9.8, "old_pct": 48.2, "diff": -38.4, "lat": 37.4916, "lng": 127.9848}, {"name": "흥덕구", "total": 51891.0, "young": 24426.0, "old": 8580.0, "young_pct": 47.1, "old_pct": 16.5, "diff": 30.6, "lat": 36.6424, "lng": 127.489}];
+
+// Color scale: purple (old) → white (balanced) → orange-red (young)
+function diffToColor(diff) {
+  // diff range: -57 to +53
+  const stops = [
+    [-57, [124, 58, 237]],   // purple deep
+    [-40, [139, 92, 246]],   // purple
+    [-20, [167, 139, 250]],  // light purple
+    [-5,  [196, 181, 253]],  // very light purple
+    [0,   [226, 232, 240]],  // white/neutral
+    [5,   [253, 230, 138]],  // light yellow
+    [20,  [251, 191, 36]],   // yellow-orange
+    [35,  [249, 115, 22]],   // orange
+    [53,  [220, 38, 38]],    // red
+  ];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [d0, c0] = stops[i];
+    const [d1, c1] = stops[i + 1];
+    if (diff >= d0 && diff <= d1) {
+      const t = (diff - d0) / (d1 - d0);
+      return [
+        Math.round(c0[0] + t * (c1[0] - c0[0])),
+        Math.round(c0[1] + t * (c1[1] - c0[1])),
+        Math.round(c0[2] + t * (c1[2] - c0[2]))
+      ];
+    }
+  }
+  if (diff < -57) return [124, 58, 237];
+  return [220, 38, 38];
+}
+
+function rgbToStr(rgb, alpha=1) {
+  return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+}
+
+function bubbleRadius(total) {
+  // sqrt scale: min 5, max 45
+  const mn = 1130, mx = 524516;
+  const t = (Math.sqrt(total) - Math.sqrt(mn)) / (Math.sqrt(mx) - Math.sqrt(mn));
+  return 5 + t * 40;
+}
+
+function formatNum(n) {
+  return Math.round(n).toLocaleString('ko-KR');
+}
+
+// Init map
+const map = L.map('map', {
+  center: [36.5, 127.8],
+  zoom: 7,
+  zoomControl: true,
+  attributionControl: true
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+// Build bubbles
+let circles = [];
+let currentFilter = 'all';
+
+function createCircles(data) {
+  circles.forEach(c => map.removeLayer(c));
+  circles = [];
+
+  data.forEach(d => {
+    const rgb = diffToColor(d.diff);
+    const r = bubbleRadius(d.total);
+    const color = rgbToStr(rgb);
+    const fillColor = rgbToStr(rgb, 0.75);
+
+    const circle = L.circleMarker([d.lat, d.lng], {
+      radius: r,
+      color: color,
+      weight: 1.5,
+      fillColor: fillColor,
+      fillOpacity: 0.82,
+    });
+
+    const diffStr = d.diff > 0
+      ? `<span class="young-color">청년 +${d.diff}%p 우세</span>`
+      : d.diff < 0
+      ? `<span class="old-color">노년 ${Math.abs(d.diff)}%p 우세</span>`
+      : '균형';
+
+    const bgColor = d.diff > 5 ? 'rgba(249,115,22,0.12)' : d.diff < -5 ? 'rgba(139,92,246,0.12)' : 'rgba(30,41,59,0.5)';
+    const barTotal = d.young_pct + d.old_pct;
+    const yW = (d.young_pct / barTotal * 100).toFixed(1);
+    const oW = (d.old_pct / barTotal * 100).toFixed(1);
+
+    circle.bindPopup(`
+      <div class="popup-title">📍 ${d.name}</div>
+      <div class="popup-grid">
+        <div class="popup-card">
+          <div class="popup-card-label">🔶 청년 (20~39세)</div>
+          <div class="popup-card-value young-color">${d.young_pct}%</div>
+          <div class="popup-card-sub">${formatNum(d.young)}명</div>
+        </div>
+        <div class="popup-card">
+          <div class="popup-card-label">🔷 노년 (65세+)</div>
+          <div class="popup-card-value old-color">${d.old_pct}%</div>
+          <div class="popup-card-sub">${formatNum(d.old)}명</div>
+        </div>
+      </div>
+      <div class="popup-bar-wrap">
+        <div class="popup-bar-label"><span>청년 ${d.young_pct}%</span><span>노년 ${d.old_pct}%</span></div>
+        <div class="popup-bar-bg">
+          <div class="popup-bar-young" style="width:${yW}%"></div>
+          <div class="popup-bar-old" style="width:${oW}%"></div>
+        </div>
+      </div>
+      <div class="popup-diff" style="background:${bgColor}">${diffStr}</div>
+      <div class="popup-total">1인가구 총수: <strong>${formatNum(d.total)}명</strong></div>
+    `, { maxWidth: 260 });
+
+    circle.addTo(map);
+    circles.push(circle);
+  });
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.remove('active', 'active-old');
+  });
+
+  let filtered;
+  if (f === 'young') {
+    filtered = DATA.filter(d => d.diff > 0);
+    document.getElementById('btn-young').classList.add('active');
+  } else if (f === 'old') {
+    filtered = DATA.filter(d => d.diff < 0);
+    document.getElementById('btn-old').classList.add('active-old');
+  } else {
+    filtered = DATA;
+    document.getElementById('btn-all').classList.add('active');
+  }
+
+  createCircles(filtered);
+  updateStats(filtered);
+}
+
+function updateStats(data) {
+  const youngCount = DATA.filter(d => d.diff > 0).length;
+  const oldCount = DATA.filter(d => d.diff < 0).length;
+  document.getElementById('s-total').textContent = data.length + '개';
+  document.getElementById('s-young').textContent = youngCount + '개';
+  document.getElementById('s-old').textContent = oldCount + '개';
+
+  const topYoung = [...DATA].sort((a,b) => b.diff - a.diff).slice(0,3);
+  const topOld = [...DATA].sort((a,b) => a.diff - b.diff).slice(0,3);
+
+  document.getElementById('s-top').innerHTML = `
+    <span style="color:#94a3b8;font-weight:600;">🔶 청년 최우세</span>
+    ${topYoung.map(d => `<span><strong style="color:#f97316">${d.name}</strong> (+${d.diff}%p)</span>`).join('')}
+    <span style="color:#94a3b8;font-weight:600;margin-top:6px;display:block;">🔷 노년 최우세</span>
+    ${topOld.map(d => `<span><strong style="color:#8b5cf6">${d.name}</strong> (${d.diff}%p)</span>`).join('')}
+  `;
+}
+
+// Initialize
+setFilter('all');
+</script>
+</body>
+</html>
